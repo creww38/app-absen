@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistem Absensi Pintar</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <script>
+    tailwind.config = {
+      theme: { extend: { fontFamily: { sans: ['Inter', 'sans-serif'] } } }
+    }
+  </script>
+  
+  <style>
+    .animate-fade-in { animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .loading-progress { transition: width 0.3s ease; }
+    .view-section { display: none; }
+    .view-section.active { display: block; }
+    .sidebar-item.active { background-color: #4f46e5; color: white; }
+  </style>
+</head>
+<body class="bg-gray-100 font-sans">
+
+<!-- LOADING PROGRESS -->
+<div id="loadingOverlay" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center">
+  <div class="bg-white rounded-2xl p-6 w-80 text-center">
+    <div class="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4"></div>
+    <h3 id="loadingTitle" class="font-bold text-gray-800">Memproses...</h3>
+    <p id="loadingMessage" class="text-xs text-gray-500 mt-1">Harap tunggu</p>
+    <div class="w-full bg-gray-200 rounded-full h-1.5 mt-4 overflow-hidden">
+      <div id="loadingBar" class="bg-indigo-600 h-1.5 rounded-full" style="width: 0%"></div>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN PAGE -->
+<div id="loginPage" class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-center">
+      <i class="fas fa-school text-4xl text-white mb-2"></i>
+      <h1 class="text-2xl font-bold text-white">Sistem Absensi</h1>
+      <p class="text-indigo-200 text-sm">MA Plus Keterampilan Tarbiyatusshibyan</p>
+    </div>
+    <div class="p-6">
+      <div class="flex gap-2 mb-6">
+        <button id="btnSiswa" onclick="setRole('siswa')" class="flex-1 py-2 rounded-lg font-semibold bg-indigo-600 text-white">Siswa</button>
+        <button id="btnAdmin" onclick="setRole('guru')" class="flex-1 py-2 rounded-lg font-semibold bg-gray-200 text-gray-700">Guru/Admin</button>
+      </div>
+      <div id="siswaForm">
+        <label class="block text-sm font-medium text-gray-700 mb-1">NISN</label>
+        <input type="text" id="nisn" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="Masukkan NISN">
+      </div>
+      <div id="guruForm" class="hidden">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+        <input type="text" id="username" class="w-full px-4 py-2 border rounded-lg mb-3 focus:ring-2 focus:ring-indigo-500" placeholder="Username">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+        <input type="password" id="password" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="Password">
+      </div>
+      <button onclick="handleLogin()" class="w-full mt-6 bg-indigo-600 text-white py-2 rounded-lg font-semibold hover:bg-indigo-700 transition">Login</button>
+      <div class="mt-4 text-center text-xs text-gray-500">
+        Demo: admin/admin123 | guru1/guru123 | NISN: 1234567890
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" class="hidden flex h-screen">
+  <!-- SIDEBAR -->
+  <aside id="sidebar" class="w-64 bg-slate-800 text-white flex flex-col shadow-xl">
+    <div class="p-4 border-b border-slate-700">
+      <h2 class="text-xl font-bold"><i class="fas fa-qrcode mr-2"></i>PINTAR</h2>
+      <p class="text-[10px] text-indigo-300">Presensi & Informasi</p>
+    </div>
+    <div class="p-4 border-b border-slate-700">
+      <div class="flex items-center gap-3">
+        <div id="userInitial" class="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-lg font-bold">U</div>
+        <div>
+          <p id="userName" class="font-semibold text-sm">User</p>
+          <p id="userRole" class="text-xs text-indigo-300">Role</p>
+        </div>
+      </div>
+    </div>
+    <nav id="sidebarMenu" class="flex-1 p-3 space-y-1 overflow-y-auto"></nav>
+    <button onclick="logout()" class="m-3 p-2 text-red-300 hover:bg-red-500/20 rounded-lg text-left transition"><i class="fas fa-sign-out-alt mr-2"></i> Keluar</button>
+  </aside>
+  
+  <!-- MAIN CONTENT -->
+  <main class="flex-1 flex flex-col overflow-hidden">
+    <header class="h-16 bg-white shadow-sm flex items-center justify-between px-6">
+      <h2 id="pageTitle" class="text-lg font-bold text-gray-800">Dashboard</h2>
+      <div class="flex items-center gap-4">
+        <p id="dateDisplay" class="text-sm text-gray-500"></p>
+        <button onclick="refreshCurrentPage()" class="text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg transition"><i class="fas fa-sync-alt"></i></button>
+      </div>
+    </header>
+    <div id="mainContent" class="flex-1 overflow-y-auto p-6"></div>
+  </main>
+</div>
+
+<div id="modalContainer"></div>
+
+<script>
+const API_BASE = '/api';
+let currentUser = null;
+let html5QrCode = null;
+let isScanning = false;
+let currentPage = 'dashboard';
+
+// ==================== LOADING FUNCTIONS ====================
+function showLoading(title, msg) {
+  document.getElementById('loadingTitle').innerHTML = title || 'Memproses...';
+  document.getElementById('loadingMessage').innerHTML = msg || 'Harap tunggu';
+  document.getElementById('loadingBar').style.width = '0%';
+  document.getElementById('loadingOverlay').classList.remove('hidden');
+  let progress = 0;
+  const interval = setInterval(() => { progress += 10; if (progress > 90) progress = 90; document.getElementById('loadingBar').style.width = progress + '%'; }, 200);
+  return interval;
+}
+function hideLoading(interval) { if (interval) clearInterval(interval); document.getElementById('loadingBar').style.width = '100%'; setTimeout(() => document.getElementById('loadingOverlay').classList.add('hidden'), 300); }
+
+// ==================== API HELPER ====================
+async function apiRequest(endpoint, method = 'GET', body = null) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (currentUser?.token) headers['Authorization'] = `Bearer ${currentUser.token}`;
+  const res = await fetch(`${API_BASE}${endpoint}`, { method, headers, body: body ? JSON.stringify(body) : null });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+// ==================== DATE ====================
+document.getElementById('dateDisplay').innerHTML = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+// ==================== LOGIN ====================
+function setRole(role) {
+  const btnSiswa = document.getElementById('btnSiswa'), btnAdmin = document.getElementById('btnAdmin');
+  const siswaForm = document.getElementById('siswaForm'), guruForm = document.getElementById('guruForm');
+  if (role === 'siswa') {
+    btnSiswa.className = 'flex-1 py-2 rounded-lg font-semibold bg-indigo-600 text-white';
+    btnAdmin.className = 'flex-1 py-2 rounded-lg font-semibold bg-gray-200 text-gray-700';
+    siswaForm.classList.remove('hidden'); guruForm.classList.add('hidden');
+  } else {
+    btnSiswa.className = 'flex-1 py-2 rounded-lg font-semibold bg-gray-200 text-gray-700';
+    btnAdmin.className = 'flex-1 py-2 rounded-lg font-semibold bg-indigo-600 text-white';
+    siswaForm.classList.add('hidden'); guruForm.classList.remove('hidden');
+  }
+}
+
+async function handleLogin() {
+  const isSiswa = !document.getElementById('guruForm').classList.contains('hidden');
+  const body = isSiswa ? { nisn: document.getElementById('nisn').value } : { username: document.getElementById('username').value, password: document.getElementById('password').value };
+  const interval = showLoading('Login', 'Memverifikasi akun...');
+  try {
+    const res = await fetch(`${API_BASE}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const result = await res.json();
+    hideLoading(interval);
+    if (result.success) {
+      currentUser = result;
+      localStorage.setItem('absensiAppSession', JSON.stringify(result));
+      document.getElementById('loginPage').classList.add('hidden');
+      document.getElementById('dashboard').classList.remove('hidden');
+      document.getElementById('userName').innerHTML = result.nama;
+      document.getElementById('userRole').innerHTML = result.role.toUpperCase();
+      document.getElementById('userInitial').innerHTML = result.nama.charAt(0).toUpperCase();
+      initDashboard();
+      Swal.fire({ icon: 'success', title: 'Login Berhasil!', text: `Selamat datang ${result.nama}`, timer: 1500, showConfirmButton: false });
+    } else { Swal.fire('Gagal', result.message, 'error'); }
+  } catch (error) { hideLoading(interval); Swal.fire('Error', 'Gagal terhubung ke server', 'error'); }
+}
+
+function logout() {
+  if (html5QrCode) html5QrCode.stop().catch(()=>{});
+  localStorage.removeItem('absensiAppSession');
+  currentUser = null;
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('loginPage').classList.remove('hidden');
+  document.getElementById('username').value = ''; document.getElementById('password').value = ''; document.getElementById('nisn').value = '';
+}
+
+function refreshCurrentPage() {
+  if (currentPage === 'dashboard') loadDashboard();
+  else if (currentPage === 'siswa') loadDataSiswa();
+  else if (currentPage === 'guru') loadDataGuru();
+  else if (currentPage === 'rekap') loadRekapAbsensi();
+  else if (currentPage === 'monitoring') loadMonitoring();
+  else if (currentPage === 'izin') loadIzinPage();
+  else if (currentPage === 'libur') loadKelolaLibur();
+  else if (currentPage === 'config') loadConfigPage();
+}
+
+// ==================== INIT DASHBOARD ====================
+async function initDashboard() {
+  const menuContainer = document.getElementById('sidebarMenu');
+  const createItem = (label, icon, page, onclick) => `<button onclick="${onclick}" data-page="${page}" class="sidebar-item w-full flex items-center gap-3 p-2 rounded-lg text-gray-300 hover:bg-slate-700 hover:text-white transition"><i class="fas ${icon} w-5"></i><span>${label}</span></button>`;
+  
+  let html = '';
+  html += createItem('Dashboard', 'fa-home', 'dashboard', 'loadDashboard()');
+  html += createItem('Data Siswa', 'fa-user-graduate', 'siswa', 'loadDataSiswa()');
+  
+  if (currentUser.role === 'admin') {
+    html += createItem('Data Guru', 'fa-chalkboard-teacher', 'guru', 'loadDataGuru()');
+    html += createItem('Kelola Libur', 'fa-calendar-times', 'libur', 'loadKelolaLibur()');
+    html += createItem('Pengaturan', 'fa-cog', 'config', 'loadConfigPage()');
+  }
+  
+  if (currentUser.role === 'guru' || currentUser.role === 'admin') {
+    html += createItem('Rekap Absensi', 'fa-chart-bar', 'rekap', 'loadRekapAbsensi()');
+    html += createItem('Monitoring', 'fa-eye', 'monitoring', 'loadMonitoring()');
+    html += createItem('Pengajuan Izin', 'fa-file-alt', 'izin', 'loadIzinPage()');
+  }
+  
+  if (currentUser.role === 'siswa') {
+    html += createItem('Ajukan Izin/Sakit', 'fa-paper-plane', 'izin', 'loadIzinPage()');
+  }
+  
+  html += createItem('Scan Absensi', 'fa-qrcode', 'scanner', 'loadScanAbsensi()');
+  
+  menuContainer.innerHTML = html;
+  loadDashboard();
+}
+
+// ==================== DASHBOARD ====================
+async function loadDashboard() {
+  currentPage = 'dashboard';
+  document.getElementById('pageTitle').innerHTML = 'Dashboard';
+  const interval = showLoading('Dashboard', 'Mengambil data...');
+  try {
+    const res = await apiRequest('/monitoring/realtime');
+    hideLoading(interval);
+    const data = res.success ? res.data : [];
+    const hadir = data.filter(d=>d.status==='Hadir').length;
+    const sakit = data.filter(d=>d.status==='Sakit').length;
+    const izin = data.filter(d=>d.status==='Izin').length;
+    const alpa = data.filter(d=>d.status==='Alpa').length;
+    const belum = data.filter(d=>d.status==='Belum Absen').length;
+    const total = data.length;
+    
+    let html = `
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+        <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-indigo-500"><p class="text-gray-500 text-xs">Total Siswa</p><h2 class="text-2xl font-bold">${total}</h2></div>
+        <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500"><p class="text-gray-500 text-xs">Hadir</p><h2 class="text-2xl font-bold text-green-600">${hadir}</h2></div>
+        <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-yellow-500"><p class="text-gray-500 text-xs">Sakit</p><h2 class="text-2xl font-bold text-yellow-600">${sakit}</h2></div>
+        <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500"><p class="text-gray-500 text-xs">Izin</p><h2 class="text-2xl font-bold text-blue-600">${izin}</h2></div>
+        <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-red-500"><p class="text-gray-500 text-xs">Alpa</p><h2 class="text-2xl font-bold text-red-600">${alpa}</h2></div>
+      </div>
+      <div class="bg-white p-4 rounded-xl shadow-sm mb-6"><canvas id="dashboardChart" height="200"></canvas></div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl p-4 text-white"><i class="fas fa-qrcode text-3xl mb-2"></i><h3 class="font-bold">Scan Absensi</h3><p class="text-xs opacity-80">Absen cepat dengan QR Code</p><button onclick="loadScanAbsensi()" class="mt-3 bg-white/20 px-3 py-1 rounded-lg text-sm">Mulai Scan</button></div>
+        <div class="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl p-4 text-white"><i class="fas fa-chart-line text-3xl mb-2"></i><h3 class="font-bold">Laporan Rekap</h3><p class="text-xs opacity-80">Export data absensi</p><button onclick="loadRekapAbsensi()" class="mt-3 bg-white/20 px-3 py-1 rounded-lg text-sm">Lihat Laporan</button></div>
+        <div class="bg-gradient-to-r from-orange-500 to-red-600 rounded-xl p-4 text-white"><i class="fas fa-file-alt text-3xl mb-2"></i><h3 class="font-bold">Pengajuan Izin</h3><p class="text-xs opacity-80">Ajukan izin/sakit</p><button onclick="loadIzinPage()" class="mt-3 bg-white/20 px-3 py-1 rounded-lg text-sm">Ajukan</button></div>
+      </div>
+    `;
+    
+    document.getElementById('mainContent').innerHTML = html;
+    const ctx = document.getElementById('dashboardChart')?.getContext('2d');
+    if (ctx) new Chart(ctx, { type: 'bar', data: { labels: ['Hadir','Sakit','Izin','Alpa','Belum'], datasets: [{ label: 'Jumlah', data: [hadir, sakit, izin, alpa, belum], backgroundColor: ['#10B981','#F59E0B','#3B82F6','#EF4444','#9CA3AF'] }] }, options: { responsive: true, maintainAspectRatio: true } });
+  } catch(e) { hideLoading(interval); Swal.fire('Error', 'Gagal load data', 'error'); }
+}
+
+// ==================== DATA SISWA ====================
+async function loadDataSiswa() {
+  currentPage = 'siswa';
+  document.getElementById('pageTitle').innerHTML = 'Data Siswa';
+  const interval = showLoading('Data Siswa', 'Mengambil data...');
+  try {
+    const res = await apiRequest('/siswa');
+    hideLoading(interval);
+    const siswa = res.success ? res.data : [];
+    document.getElementById('mainContent').innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="p-4 border-b flex justify-between items-center">
+          <h3 class="font-bold">📋 Direktori Siswa</h3>
+          ${currentUser.role === 'admin' ? '<button onclick="showTambahSiswa()" class="bg-indigo-600 text-white px-3 py-1 rounded-lg text-sm"><i class="fas fa-plus mr-1"></i>Tambah</button>' : ''}
+        </div>
+        <div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3 text-left">No</th><th class="p-3 text-left">Nama</th><th class="p-3 text-left">NISN</th><th class="p-3 text-left">Kelas</th><th class="p-3 text-left">Aksi</th></tr></thead><tbody>${siswa.map((s,i)=>`<tr class="border-b hover:bg-gray-50"><td class="p-3">${i+1}<\/td><td class="p-3 font-medium">${s.nama}<\/td><td class="p-3">${s.nisn}<\/td><td class="p-3"><span class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-xs">${s.kelas}<\/span><\/td><td class="p-3">${currentUser.role === 'admin' ? `<button onclick="editSiswa('${s.nisn}')" class="text-amber-600 mr-2"><i class="fas fa-edit"></i></button><button onclick="hapusSiswa('${s.nisn}','${s.nama}')" class="text-red-600"><i class="fas fa-trash"></i></button>` : '-'}<\/td><\/tr>`).join('')}</tbody></table></div>
+      </div>
+    `;
+  } catch(e) { hideLoading(interval); Swal.fire('Error', 'Gagal load data', 'error'); }
+}
+
+async function showTambahSiswa() {
+  Swal.fire({
+    title: 'Tambah Siswa',
+    html: `<input id="nama" class="swal2-input" placeholder="Nama Lengkap"><input id="nisn" class="swal2-input" placeholder="NISN"><input id="kelas" class="swal2-input" placeholder="Kelas">`,
+    preConfirm: () => ({ nama: document.getElementById('nama').value, nisn: document.getElementById('nisn').value, kelas: document.getElementById('kelas').value, jenisKelamin: 'Laki-laki', agama: 'Islam', namaAyah: '', namaIbu: '', noHp: '', alamat: '' })
+  }).then(async (result) => {
+    if (result.value) {
+      const interval = showLoading('Menyimpan', 'Menambah data siswa...');
+      const res = await apiRequest('/siswa', 'POST', result.value);
+      hideLoading(interval);
+      if (res.success) { Swal.fire('Berhasil', res.message, 'success'); loadDataSiswa(); }
+      else Swal.fire('Gagal', res.message, 'error');
+    }
+  });
+}
+
+async function editSiswa(nisn) {
+  const res = await apiRequest(`/siswa/${nisn}`);
+  if (res.success) {
+    const s = res.data;
+    Swal.fire({
+      title: 'Edit Siswa',
+      html: `<input id="nama" class="swal2-input" value="${s.nama}" placeholder="Nama"><input id="kelas" class="swal2-input" value="${s.kelas}" placeholder="Kelas">`,
+      preConfirm: () => ({ nama: document.getElementById('nama').value, nisn: nisn, kelas: document.getElementById('kelas').value })
+    }).then(async (result) => {
+      if (result.value) {
+        const interval = showLoading('Menyimpan', 'Mengupdate data...');
+        const updateRes = await apiRequest(`/siswa/${nisn}`, 'PUT', result.value);
+        hideLoading(interval);
+        if (updateRes.success) { Swal.fire('Berhasil', updateRes.message, 'success'); loadDataSiswa(); }
+        else Swal.fire('Gagal', updateRes.message, 'error');
+      }
+    });
+  }
+}
+
+async function hapusSiswa(nisn, nama) {
+  Swal.fire({ title: 'Hapus Siswa?', text: `Hapus ${nama}?`, icon: 'warning', showCancelButton: true }).then(async (result) => {
+    if (result.isConfirmed) {
+      const interval = showLoading('Menghapus', 'Menghapus data siswa...');
+      const res = await apiRequest(`/siswa/${nisn}`, 'DELETE');
+      hideLoading(interval);
+      if (res.success) { Swal.fire('Berhasil', res.message, 'success'); loadDataSiswa(); }
+      else Swal.fire('Gagal', res.message, 'error');
+    }
+  });
+}
+
+// ==================== DATA GURU (Admin Only) ====================
+async function loadDataGuru() {
+  if (currentUser.role !== 'admin') { loadDashboard(); return; }
+  currentPage = 'guru';
+  document.getElementById('pageTitle').innerHTML = 'Data Guru';
+  const interval = showLoading('Data Guru', 'Mengambil data...');
+  try {
+    const res = await apiRequest('/guru');
+    hideLoading(interval);
+    const guru = res.success ? res.data : [];
+    document.getElementById('mainContent').innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="p-4 border-b flex justify-between"><h3 class="font-bold">👨‍🏫 Manajemen Guru</h3><button onclick="showTambahGuru()" class="bg-purple-600 text-white px-3 py-1 rounded-lg text-sm"><i class="fas fa-plus mr-1"></i>Tambah</button></div>
+        <div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">No</th><th>Username</th><th>Kelas</th><th>Aksi</th></tr></thead><tbody>${guru.map((g,i)=>`<tr class="border-b"><td class="p-3">${i+1}<\/td><td class="p-3">${g.username}<\/td><td class="p-3">${g.kelas || '-'}<\/td><td class="p-3"><button onclick="editGuru('${g.username}')" class="text-amber-600 mr-2"><i class="fas fa-edit"></i></button><button onclick="hapusGuru('${g.username}')" class="text-red-600"><i class="fas fa-trash"></i></button><\/td><\/tr>`).join('')}</tbody></table></div>
+      </div>
+    `;
+  } catch(e) { hideLoading(interval); Swal.fire('Error', 'Gagal load data', 'error'); }
+}
+
+async function showTambahGuru() {
+  Swal.fire({
+    title: 'Tambah Guru',
+    html: `<input id="username" class="swal2-input" placeholder="Username"><input id="password" class="swal2-input" placeholder="Password"><input id="kelas" class="swal2-input" placeholder="Wali Kelas (opsional)">`,
+    preConfirm: () => ({ username: document.getElementById('username').value, password: document.getElementById('password').value, kelas: document.getElementById('kelas').value })
+  }).then(async (result) => {
+    if (result.value) {
+      const interval = showLoading('Menyimpan', 'Menambah data guru...');
+      const res = await apiRequest('/guru', 'POST', result.value);
+      hideLoading(interval);
+      if (res.success) { Swal.fire('Berhasil', res.message, 'success'); loadDataGuru(); }
+      else Swal.fire('Gagal', res.message, 'error');
+    }
+  });
+}
+
+async function hapusGuru(username) {
+  Swal.fire({ title: 'Hapus Guru?', text: `Hapus ${username}?`, icon: 'warning', showCancelButton: true }).then(async (result) => {
+    if (result.isConfirmed) {
+      const interval = showLoading('Menghapus', 'Menghapus data guru...');
+      const res = await apiRequest(`/guru/${username}`, 'DELETE');
+      hideLoading(interval);
+      if (res.success) { Swal.fire('Berhasil', res.message, 'success'); loadDataGuru(); }
+      else Swal.fire('Gagal', res.message, 'error');
+    }
+  });
+}
+
+function editGuru(username) { Swal.fire('Info', 'Fitur edit guru menyusul', 'info'); }
+
+// ==================== REKAP ABSENSI ====================
+async function loadRekapAbsensi() {
+  currentPage = 'rekap';
+  document.getElementById('pageTitle').innerHTML = 'Rekap Absensi';
+  document.getElementById('mainContent').innerHTML = `
+    <div class="bg-white rounded-xl shadow-sm p-6">
+      <h3 class="font-bold mb-4">📊 Filter Laporan</h3>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+        <input type="date" id="tglMulai" class="border rounded-lg p-2">
+        <input type="date" id="tglAkhir" class="border rounded-lg p-2">
+        <select id="filterKelas" class="border rounded-lg p-2"><option value="">Semua Kelas</option></select>
+        <button onclick="applyRekapFilter()" class="bg-indigo-600 text-white p-2 rounded-lg">Tampilkan</button>
+      </div>
+      <div id="rekapResult"></div>
+    </div>
+  `;
+  // Load kelas untuk filter
+  const kelasRes = await apiRequest('/siswa/kelas');
+  if (kelasRes.success) {
+    const select = document.getElementById('filterKelas');
+    kelasRes.data.forEach(k => { select.innerHTML += `<option value="${k}">${k}</option>`; });
+  }
+}
+
+async function applyRekapFilter() {
+  const tglMulai = document.getElementById('tglMulai').value, tglAkhir = document.getElementById('tglAkhir').value;
+  if (!tglMulai || !tglAkhir) { Swal.fire('Perhatian', 'Pilih tanggal mulai dan akhir', 'warning'); return; }
+  const interval = showLoading('Rekap', 'Mengambil data...');
+  try {
+    const res = await apiRequest('/absensi/list');
+    hideLoading(interval);
+    if (res.success) {
+      let filtered = res.data.filter(d => d.tanggal >= tglMulai && d.tanggal <= tglAkhir);
+      const filterKelas = document.getElementById('filterKelas').value;
+      if (filterKelas) filtered = filtered.filter(d => d.kelas === filterKelas);
+      document.getElementById('rekapResult').innerHTML = `
+        <div class="overflow-x-auto mt-4"><table class="w-full"><thead class="bg-gray-50"><tr><th class="p-2">No</th><th>Tanggal</th><th>Nama</th><th>Kelas</th><th>Jam Datang</th><th>Jam Pulang</th><th>Status</th></tr></thead><tbody>${filtered.map((d,i)=>`<tr class="border-b"><td class="p-2">${i+1}<\/td><td>${d.tanggal}<\/td><td>${d.nama}<\/td><td>${d.kelas}<\/td><td>${d.jamDatang}<\/td><td>${d.jamPulang}<\/td><td><span class="px-2 py-0.5 rounded text-xs ${d.status==='Hadir'?'bg-green-100 text-green-700':d.status==='Sakit'?'bg-yellow-100 text-yellow-700':'bg-gray-100'}">${d.status}<\/span><\/td><\/tr>`).join('')}</tbody></tr></div>
+        <div class="mt-4"><button onclick="exportRekapExcel()" class="bg-emerald-600 text-white px-4 py-2 rounded-lg"><i class="fas fa-file-excel mr-2"></i> Export Excel</button></div>
+      `;
+    }
+  } catch(e) { hideLoading(interval); Swal.fire('Error', 'Gagal load data', 'error'); }
+}
+
+async function exportRekapExcel() {
+  const tglMulai = document.getElementById('tglMulai')?.value, tglAkhir = document.getElementById('tglAkhir')?.value;
+  if (!tglMulai || !tglAkhir) { Swal.fire('Pilih tanggal', 'Pilih rentang tanggal terlebih dahulu', 'warning'); return; }
+  const interval = showLoading('Export', 'Membuat file Excel...');
+  try {
+    const res = await fetch(`${API_BASE}/export/excel`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentUser.token}` }, body: JSON.stringify({ type: 'absensi' }) });
+    hideLoading(interval);
+    if (res.ok) { const blob = await res.blob(); const url = window.URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `laporan_absensi_${tglMulai}_sd_${tglAkhir}.xlsx`; a.click(); window.URL.revokeObjectURL(url); Swal.fire('Sukses', 'File berhasil diunduh', 'success'); }
+    else Swal.fire('Gagal', 'Gagal export data', 'error');
+  } catch(e) { hideLoading(interval); Swal.fire('Error', 'Gagal export', 'error'); }
+}
+
+// ==================== MONITORING ====================
+async function loadMonitoring() {
+  currentPage = 'monitoring';
+  document.getElementById('pageTitle').innerHTML = 'Monitoring Kehadiran';
+  const interval = showLoading('Monitoring', 'Mengambil data...');
+  try {
+    const kelas = currentUser.kelas && currentUser.role === 'guru' ? `?kelas=${encodeURIComponent(currentUser.kelas)}` : '';
+    const res = await apiRequest(`/monitoring/realtime${kelas}`);
+    hideLoading(interval);
+    const data = res.success ? res.data : [];
+    document.getElementById('mainContent').innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="p-4 border-b bg-gray-50"><h3 class="font-bold">📊 Kehadiran Hari Ini</h3></div>
+        <div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">No</th><th>Nama</th><th>Kelas</th><th>Jam Datang</th><th>Jam Pulang</th><th>Status</th>${currentUser.role !== 'siswa' ? '<th>Aksi</th>' : ''}</thead><tbody>${data.map((d,i)=>`<tr class="border-b hover:bg-gray-50"><td class="p-3">${i+1}<\/td><td class="p-3 font-medium">${d.nama}<\/td><td class="p-3"><span class="bg-indigo-100 px-2 py-0.5 rounded text-xs">${d.kelas}<\/span><\/td><td class="p-3">${d.jamDatang}<\/td><td class="p-3">${d.jamPulang}<\/td><td class="p-3"><span class="px-2 py-0.5 rounded text-xs ${d.status==='Hadir'?'bg-green-100 text-green-700':d.status==='Sakit'?'bg-yellow-100 text-yellow-700':d.status==='Izin'?'bg-blue-100 text-blue-700':d.status==='Alpa'?'bg-red-100 text-red-700':'bg-gray-100'}">${d.status}<\/span><\/td>${currentUser.role !== 'siswa' ? `<td class="p-3"><select onchange="updateStatus('${d.nisn}','${d.nama}','${d.kelas}',this)" class="text-xs border rounded p-1"><option value="Hadir" ${d.status==='Hadir'?'selected':''}>Hadir</option><option value="Sakit" ${d.status==='Sakit'?'selected':''}>Sakit</option><option value="Izin" ${d.status==='Izin'?'selected':''}>Izin</option><option value="Alpa" ${d.status==='Alpa'?'selected':''}>Alpa</option></select><\/td>` : ''}<\/tr>`).join('')}</tbody></table></div>
+      </div>
+    `;
+  } catch(e) { hideLoading(interval); Swal.fire('Error', 'Gagal load data', 'error'); }
+}
+
+async function updateStatus(nisn, nama, kelas, select) {
+  const newStatus = select.value;
+  const interval = showLoading('Update', 'Mengubah status...');
+  const res = await apiRequest('/monitoring/status', 'PUT', { nisn, nama, kelas, status: newStatus });
+  hideLoading(interval);
+  if (res.success) { Swal.fire('Berhasil', 'Status diubah', 'success'); loadMonitoring(); }
+  else Swal.fire('Gagal', res.message, 'error');
+}
+
+// ==================== IZIN & SAKIT ====================
+async function loadIzinPage() {
+  currentPage = 'izin';
+  document.getElementById('pageTitle').innerHTML = currentUser.role === 'siswa' ? 'Ajukan Izin/Sakit' : 'Pengajuan Izin/Sakit';
+  
+  if (currentUser.role === 'siswa') {
+    document.getElementById('mainContent').innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm p-6 max-w-md mx-auto">
+        <h3 class="font-bold mb-4">📝 Ajukan Izin/Sakit</h3>
+        <div class="mb-3"><label class="block text-sm mb-1">Jenis</label><select id="jenis" class="w-full border rounded-lg p-2"><option value="izin">Izin</option><option value="sakit">Sakit</option></select></div>
+        <div class="mb-3"><label class="block text-sm mb-1">Tanggal Mulai</label><input type="date" id="tglMulai" class="w-full border rounded-lg p-2"></div>
+        <div class="mb-3"><label class="block text-sm mb-1">Tanggal Akhir</label><input type="date" id="tglAkhir" class="w-full border rounded-lg p-2"></div>
+        <div class="mb-3"><label class="block text-sm mb-1">Keterangan</label><textarea id="keterangan" class="w-full border rounded-lg p-2" rows="2" placeholder="Alasan izin/sakit..."></textarea></div>
+        <button onclick="ajukanIzin()" class="w-full bg-indigo-600 text-white py-2 rounded-lg">Ajukan</button>
+        <hr class="my-6"><h4 class="font-bold mb-3">Riwayat Pengajuan</h4><div id="riwayatIzin"></div>
+      </div>
+    `;
+    loadRiwayatIzin();
+  } else {
+    const interval = showLoading('Izin', 'Mengambil data...');
+    const res = await apiRequest('/izin/list');
+    hideLoading(interval);
+    if (res.success) {
+      document.getElementById('mainContent').innerHTML = `
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+          <div class="p-4 border-b"><h3 class="font-bold">📋 Daftar Pengajuan Izin/Sakit</h3></div>
+          <div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-50"><tr><th>No</th><th>Tgl Pengajuan</th><th>NISN</th><th>Pengaju</th><th>Tanggal</th><th>Jenis</th><th>Keterangan</th><th>Status</th><th>Aksi</th></tr></thead><tbody>${res.data.map((d,i)=>`<tr class="border-b"><td class="p-2">${i+1}<\/td><td class="p-2">${new Date(d.tanggalPengajuan).toLocaleDateString()}<\/td><td class="p-2">${d.nisn}<\/td><td class="p-2">${d.pengaju}<\/td><td class="p-2">${d.tanggalMulai} - ${d.tanggalAkhir}<\/td><td class="p-2"><span class="px-2 py-0.5 rounded text-xs ${d.jenis==='sakit'?'bg-yellow-100 text-yellow-700':'bg-blue-100'}">${d.jenis}<\/span><\/td><td class="p-2">${d.keterangan}<\/td><td class="p-2"><span class="px-2 py-0.5 rounded text-xs ${d.status==='pending'?'bg-orange-100 text-orange-700':d.status==='disetujui'?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}">${d.status}<\/span><\/td><td class="p-2">${d.status==='pending' ? `<button onclick="approveIzin(${d.id})" class="bg-green-500 text-white px-2 py-1 rounded text-xs mr-1">Setuju</button><button onclick="rejectIzin(${d.id})" class="bg-red-500 text-white px-2 py-1 rounded text-xs">Tolak</button>` : '-'}<\/td><\/tr>`).join('')}</tbody></table></div>
+        </div>
+      `;
+    }
+  }
+}
+
+async function ajukanIzin() {
+  const jenis = document.getElementById('jenis').value;
+  const tglMulai = document.getElementById('tglMulai').value;
+  const tglAkhir = document.getElementById('tglAkhir').value;
+  const keterangan = document.getElementById('keterangan').value;
+  if (!tglMulai || !tglAkhir) { Swal.fire('Error', 'Pilih tanggal', 'error'); return; }
+  const interval = showLoading('Mengirim', 'Mengajukan izin...');
+  const res = await apiRequest('/izin/create', 'POST', { jenis, keterangan, tanggalMulai: tglMulai, tanggalAkhir: tglAkhir });
+  hideLoading(interval);
+  if (res.success) { Swal.fire('Berhasil', res.message, 'success'); loadIzinPage(); }
+  else Swal.fire('Gagal', res.message, 'error');
+}
+
+async function loadRiwayatIzin() {
+  const res = await apiRequest('/izin/my');
+  if (res.success) {
+    document.getElementById('riwayatIzin').innerHTML = res.data.map(d => `<div class="border p-2 rounded mb-2 text-sm"><span class="font-bold">${d.jenis}</span> - ${d.tanggalMulai} s/d ${d.tanggalAkhir}<br>Status: <span class="px-2 py-0.5 rounded text-xs ${d.status==='pending'?'bg-orange-100':d.status==='disetujui'?'bg-green-100':'bg-red-100'}">${d.status}</span><br><small>${d.keterangan}</small></div>`).join('');
+  }
+}
+
+async function approveIzin(id) {
+  const interval = showLoading('Memproses', 'Menyetujui pengajuan...');
+  const res = await apiRequest(`/izin/${id}/approve`, 'PUT');
+  hideLoading(interval);
+  if (res.success) { Swal.fire('Berhasil', res.message, 'success'); loadIzinPage(); }
+  else Swal.fire('Gagal', res.message, 'error');
+}
+
+async function rejectIzin(id) {
+  const interval = showLoading('Memproses', 'Menolak pengajuan...');
+  const res = await apiRequest(`/izin/${id}/reject`, 'PUT');
+  hideLoading(interval);
+  if (res.success) { Swal.fire('Berhasil', res.message, 'success'); loadIzinPage(); }
+  else Swal.fire('Gagal', res.message, 'error');
+}
+
+// ==================== KELOLA LIBUR ====================
+async function loadKelolaLibur() {
+  if (currentUser.role !== 'admin') { loadDashboard(); return; }
+  currentPage = 'libur';
+  document.getElementById('pageTitle').innerHTML = 'Kelola Hari Libur';
+  const interval = showLoading('Libur', 'Mengambil data...');
+  const res = await apiRequest('/libur');
+  hideLoading(interval);
+  if (res.success) {
+    document.getElementById('mainContent').innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <h3 class="font-bold mb-4">📅 Daftar Hari Libur</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <input type="date" id="tglLibur" class="border rounded-lg p-2"><input type="text" id="ketLibur" class="border rounded-lg p-2" placeholder="Keterangan"><button onclick="tambahLibur()" class="bg-emerald-600 text-white p-2 rounded-lg">Tambah</button>
+        </div>
+        <div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-50"><tr><th>No</th><th>Tanggal</th><th>Keterangan</th><th>Aksi</th></tr></thead><tbody>${res.data.map((d,i)=>`<tr class="border-b"><td class="p-2">${i+1}<\/td><td class="p-2">${d.tanggal}<\/td><td class="p-2">${d.keterangan}<\/td><td class="p-2"><button onclick="hapusLibur('${d.tanggal}')" class="bg-red-500 text-white px-2 py-1 rounded text-xs">Hapus<\/button><\/td><\/tr>`).join('')}</tbody></table></div>
+      </div>
+    `;
+  }
+}
+
+async function tambahLibur() {
+  const tanggal = document.getElementById('tglLibur').value;
+  const keterangan = document.getElementById('ketLibur').value;
+  if (!tanggal) { Swal.fire('Error', 'Pilih tanggal', 'error'); return; }
+  const interval = showLoading('Menyimpan', 'Menambah hari libur...');
+  const res = await apiRequest('/libur', 'POST', { tanggal, keterangan });
+  hideLoading(interval);
+  if (res.success) { Swal.fire('Berhasil', res.message, 'success'); loadKelolaLibur(); }
+  else Swal.fire('Gagal', res.message, 'error');
+}
+
+async function hapusLibur(tanggal) {
+  Swal.fire({ title: 'Hapus?', text: `Hapus libur ${tanggal}?`, icon: 'warning', showCancelButton: true }).then(async (result) => {
+    if (result.isConfirmed) {
+      const interval = showLoading('Menghapus', 'Menghapus hari libur...');
+      const res = await apiRequest(`/libur/${tanggal}`, 'DELETE');
+      hideLoading(interval);
+      if (res.success) { Swal.fire('Berhasil', res.message, 'success'); loadKelolaLibur(); }
+      else Swal.fire('Gagal', res.message, 'error');
+    }
+  });
+}
+
+// ==================== KONFIGURASI ====================
+async function loadConfigPage() {
+  if (currentUser.role !== 'admin') { loadDashboard(); return; }
+  currentPage = 'config';
+  document.getElementById('pageTitle').innerHTML = 'Pengaturan';
+  const interval = showLoading('Config', 'Mengambil data...');
+  const res = await apiRequest('/config');
+  hideLoading(interval);
+  if (res.success) {
+    const c = res.data;
+    document.getElementById('mainContent').innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm p-6 max-w-lg mx-auto">
+        <h3 class="font-bold mb-4">⚙️ Pengaturan Waktu Absensi</h3>
+        <div class="mb-3"><label class="block text-sm">Jam Masuk Mulai</label><input type="time" id="jam_masuk_mulai" class="w-full border rounded-lg p-2" value="${c.jam_masuk_mulai}"></div>
+        <div class="mb-3"><label class="block text-sm">Batas Terlambat</label><input type="time" id="jam_masuk_akhir" class="w-full border rounded-lg p-2" value="${c.jam_masuk_akhir}"></div>
+        <div class="mb-3"><label class="block text-sm">Jam Pulang Mulai</label><input type="time" id="jam_pulang_mulai" class="w-full border rounded-lg p-2" value="${c.jam_pulang_mulai}"></div>
+        <div class="mb-3"><label class="block text-sm">Batas Pulang</label><input type="time" id="jam_pulang_akhir" class="w-full border rounded-lg p-2" value="${c.jam_pulang_akhir}"></div>
+        <button onclick="saveConfig()" class="w-full bg-indigo-600 text-white py-2 rounded-lg">Simpan Pengaturan</button>
+      </div>
+    `;
+  }
+}
+
+async function saveConfig() {
+  const newConfig = {
+    jam_masuk_mulai: document.getElementById('jam_masuk_mulai').value,
+    jam_masuk_akhir: document.getElementById('jam_masuk_akhir').value,
+    jam_pulang_mulai: document.getElementById('jam_pulang_mulai').value,
+    jam_pulang_akhir: document.getElementById('jam_pulang_akhir').value
+  };
+  const interval = showLoading('Menyimpan', 'Menyimpan konfigurasi...');
+  const res = await apiRequest('/config', 'PUT', newConfig);
+  hideLoading(interval);
+  if (res.success) Swal.fire('Berhasil', res.message, 'success');
+  else Swal.fire('Gagal', res.message, 'error');
+}
+
+// ==================== SCAN ABSENSI ====================
+async function loadScanAbsensi() {
+  currentPage = 'scanner';
+  document.getElementById('pageTitle').innerHTML = 'Scan Absensi';
+  document.getElementById('mainContent').innerHTML = `
+    <div class="max-w-md mx-auto">
+      <div class="bg-white rounded-xl shadow-sm p-4">
+        <div id="qr-reader" class="w-full"></div>
+        <div id="scanResult" class="mt-4 text-center"></div>
+        <div class="flex gap-2 mt-4"><button onclick="startCamera('environment')" class="flex-1 bg-blue-500 text-white py-2 rounded-lg">Kamera Belakang</button><button onclick="startCamera('user')" class="flex-1 bg-purple-500 text-white py-2 rounded-lg">Kamera Depan</button></div>
+        <button onclick="backToDashboard()" class="w-full mt-2 bg-gray-500 text-white py-2 rounded-lg">Kembali</button>
+      </div>
+    </div>
+  `;
+  setTimeout(() => startCamera('environment'), 500);
+}
+
+function startCamera(mode) {
+  if (html5QrCode) html5QrCode.stop().then(() => initCamera(mode)).catch(() => initCamera(mode));
+  else initCamera(mode);
+}
+
+function initCamera(mode) {
+  html5QrCode = new Html5Qrcode("qr-reader");
+  html5QrCode.start({ facingMode: mode }, { fps: 10, qrbox: { width: 250, height: 250 } }, onScanSuccess, (err) => {})
+    .catch(() => Swal.fire('Error', 'Gagal akses kamera', 'error'));
+}
+
+async function onScanSuccess(decodedText) {
+  const resultDiv = document.getElementById('scanResult');
+  resultDiv.innerHTML = '<div class="bg-indigo-100 p-3 rounded-lg"><i class="fas fa-spinner fa-spin mr-2"></i> Memproses...</div>';
+  try {
+    const res = await apiRequest('/absensi/scan', 'POST', { nisn: decodedText, scannerRole: currentUser.role, scannerKelas: currentUser.kelas || '' });
+    if (res.success) {
+      resultDiv.innerHTML = `<div class="bg-green-100 text-green-700 p-3 rounded-lg"><i class="fas fa-check-circle mr-2"></i> ${res.message}<br>Jam: ${res.jamDatang || res.jamPulang}<br>${res.nama} (${res.kelas})</div>`;
+      Swal.fire({ icon: 'success', title: 'Sukses!', text: res.message, timer: 2000 });
+      if (currentUser.role === 'siswa') loadDashboard();
+    } else {
+      resultDiv.innerHTML = `<div class="bg-red-100 text-red-700 p-3 rounded-lg">${res.message}</div>`;
+    }
+  } catch(e) { resultDiv.innerHTML = '<div class="bg-red-100 p-3 rounded-lg">Gagal memproses</div>'; }
+}
+
+function backToDashboard() {
+  if (html5QrCode) html5QrCode.stop().catch(()=>{});
+  loadDashboard();
+}
+
+// ==================== CHECK SESSION ====================
+const savedSession = localStorage.getItem('absensiAppSession');
+if (savedSession) {
+  try {
+    currentUser = JSON.parse(savedSession);
+    if (currentUser && currentUser.success) {
+      document.getElementById('loginPage').classList.add('hidden');
+      document.getElementById('dashboard').classList.remove('hidden');
+      document.getElementById('userName').innerHTML = currentUser.nama;
+      document.getElementById('userRole').innerHTML = currentUser.role.toUpperCase();
+      document.getElementById('userInitial').innerHTML = currentUser.nama.charAt(0).toUpperCase();
+      initDashboard();
+    }
+  } catch(e) {}
+}
+
+setRole('siswa');
+</script>
+</body>
+</html>
